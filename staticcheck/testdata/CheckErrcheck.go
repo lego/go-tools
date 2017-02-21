@@ -54,30 +54,10 @@ func customError() error {
 	return MyError("an error occurred")
 }
 
-func customConcreteError() MyError {
-	println() // not pure
-	return MyError("an error occurred")
-}
-
-func customConcreteErrorTuple() (int, MyError) {
-	println() // not pure
-	return 0, MyError("an error occurred")
-}
-
 type MyPointerError string
 
 func (e *MyPointerError) Error() string {
 	return string(*e)
-}
-
-func customPointerError() *MyPointerError {
-	e := MyPointerError("an error occurred")
-	return &e
-}
-
-func customPointerErrorTuple() (int, *MyPointerError) {
-	e := MyPointerError("an error occurred")
-	return 0, &e
 }
 
 func main() {
@@ -92,18 +72,6 @@ func main() {
 	// Return a custom error type
 	_ = customError() // BLANK
 	customError()     // MATCH /unchecked error/
-
-	// Return a custom concrete error type
-	_ = customConcreteError()         // BLANK
-	customConcreteError()             // MATCH /unchecked error/
-	_, _ = customConcreteErrorTuple() // BLANK
-	customConcreteErrorTuple()        // MATCH /unchecked error/
-
-	// Return a custom pointer error type
-	_ = customPointerError()         // BLANK
-	customPointerError()             // MATCH /unchecked error/
-	_, _ = customPointerErrorTuple() // BLANK
-	customPointerErrorTuple()        // MATCH /unchecked error/
 
 	// Method with a single error return
 	x := t{}
