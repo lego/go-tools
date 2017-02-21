@@ -31,6 +31,10 @@ var stdlibDescs = map[string]Description{
 	"strings.TrimSuffix":     Description{Pure: true},
 
 	"(*net/http.Request).WithContext": Description{Pure: true},
+
+	// TODO(dh): remove this once we can detect nil errors
+	// automatically
+	"(*bytes.Buffer).Write": Description{NilError: true},
 }
 
 type Description struct {
@@ -40,6 +44,9 @@ type Description struct {
 	Infinite bool
 	// Variable ranges
 	Ranges vrp.Ranges
+	// Function returns an error as its last argument, but it is
+	// always nil
+	NilError bool
 }
 
 type descriptionEntry struct {

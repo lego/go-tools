@@ -2803,6 +2803,12 @@ func (c *Checker) CheckErrcheck(f *lint.File) {
 					continue
 				}
 
+				ssafn := ssacall.Common().StaticCallee()
+				if ssafn != nil && c.funcDescs.Get(ssafn).NilError {
+					// Don't complain when the error is known to be nil
+					continue
+				}
+
 				res := ssacall.Common().Signature().Results()
 				if res.Len() == 0 {
 					continue

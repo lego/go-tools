@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 )
@@ -97,10 +98,10 @@ func main() {
 	go a()    // MATCH /unchecked error/
 	defer a() // MATCH /unchecked error/
 
-	// b1 := bytes.Buffer{}
-	// b2 := &bytes.Buffer{}
-	// b1.Write(nil)
-	// b2.Write(nil)
+	b1 := bytes.Buffer{}
+	b2 := &bytes.Buffer{}
+	b1.Write(nil)
+	b2.Write(nil)
 	// rand.Read(nil)
 	// mrand.Read(nil)
 
