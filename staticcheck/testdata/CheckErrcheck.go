@@ -37,8 +37,8 @@ func c() int {
 
 func rec() {
 	defer func() {
-		recover()     // MATCH /unchecked error/
-		_ = recover() // BLANK
+		recover() // MATCH /unchecked error/
+		_ = recover()
 	}()
 	defer recover() // MATCH /unchecked error/
 }
@@ -67,34 +67,34 @@ func (e *MyPointerError) Error() string {
 
 func main() {
 	// Single error return
-	_ = a() // BLANK
-	a()     // MATCH /unchecked error/
+	_ = a()
+	a() // MATCH /unchecked error/
 
 	// Return another value and an error
-	_, _ = b() // BLANK
-	b()        // MATCH /unchecked error/
+	_, _ = b()
+	b() // MATCH /unchecked error/
 
 	// Return a custom error type
-	_ = customError() // BLANK
-	customError()     // MATCH /unchecked error/
+	_ = customError()
+	customError() // MATCH /unchecked error/
 
 	// Method with a single error return
 	x := t{}
-	_ = x.a() // BLANK
-	x.a()     // MATCH /unchecked error/
+	_ = x.a()
+	x.a() // MATCH /unchecked error/
 
 	// Method call on a struct member
 	y := u{x}
-	_ = y.t.a() // BLANK
-	y.t.a()     // MATCH /unchecked error/
+	_ = y.t.a()
+	y.t.a() // MATCH /unchecked error/
 
 	m1 := map[string]func() error{"a": a}
-	_ = m1["a"]() // BLANK
-	m1["a"]()     // MATCH /unchecked error/
+	_ = m1["a"]()
+	m1["a"]() // MATCH /unchecked error/
 
 	// Additional cases for assigning errors to blank identifier
-	z, _ := b()    // BLANK
-	_, w := a(), 5 // BLANK
+	z, _ := b()
+	_, w := a(), 5
 
 	// Assign non error to blank identifier
 	_ = c()
