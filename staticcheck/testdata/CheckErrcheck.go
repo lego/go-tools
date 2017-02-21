@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"os"
 )
 
 type t struct{}
@@ -120,6 +121,18 @@ func main() {
 	if err != nil {
 		println()
 	}
+
+	f1, _ := os.Open("")
+	f1.Close()
+
+	f2, _ := os.OpenFile("", os.O_RDONLY, 0)
+	f2.Close()
+
+	f3, _ := os.Create("")
+	f3.Close() // MATCH /unchecked error/
+
+	f4, _ := os.OpenFile("", os.O_WRONLY, 0)
+	f4.Close() // MATCH /unchecked error/
 }
 
-// MATCH:118 /never used/
+// MATCH:119 /never used/

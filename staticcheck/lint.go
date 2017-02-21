@@ -2777,6 +2777,25 @@ func (c *Checker) CheckWriterBufferModified(f *lint.File) {
 	}
 }
 
+func isReadOnlyFile(val ssa.Value) bool {
+	ex, ok := val.(*ssa.Extract)
+	if !ok {
+		return false
+	}
+	call, ok := ex.Tuple.(*ssa.Call)
+	if !ok {
+		return false
+	}
+	switch callName(call.Common()) {
+	case "os.Open":
+		return true
+	case "os.OpenFile":
+		flags, ok := call.Common().Args[1].(*ssa.Const)
+		return ok && flags.Uint64() == 0
+	}
+	return false
+}
+
 func (c *Checker) CheckErrcheck(f *lint.File) {
 	for _, ssafn := range c.funcsForFile(f) {
 		for _, b := range ssafn.Blocks {
@@ -2804,9 +2823,19 @@ func (c *Checker) CheckErrcheck(f *lint.File) {
 				}
 
 				ssafn := ssacall.Common().StaticCallee()
-				if ssafn != nil && c.funcDescs.Get(ssafn).NilError {
-					// Don't complain when the error is known to be nil
-					continue
+				if ssafn != nil {
+					if c.funcDescs.Get(ssafn).NilError {
+						// Don't complain when the error is known to be nil
+						continue
+					}
+
+					switch callName(ssacall.Common()) {
+					case "(*os.File).Close":
+						recv := ssacall.Common().Args[0]
+						if isReadOnlyFile(recv) {
+							continue
+						}
+					}
 				}
 
 				res := ssacall.Common().Signature().Results()
