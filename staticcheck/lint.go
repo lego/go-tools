@@ -2804,6 +2804,11 @@ func (c *Checker) CheckErrcheck(f *lint.File) {
 				if !ok {
 					continue
 				}
+
+				switch callName(ssacall.Common()) {
+				case "fmt.Print", "fmt.Println", "fmt.Printf":
+					continue
+				}
 				isRecover := false
 				if builtin, ok := ssacall.Common().Value.(*ssa.Builtin); ok {
 					isRecover = ok && builtin.Name() == "recover"

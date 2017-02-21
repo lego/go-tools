@@ -12,8 +12,8 @@ import (
 type t struct{}
 
 func (x t) a() error {
-	fmt.Println("this method returns an error")      // MATCH /unchecked error/
-	fmt.Println("this method also returns an error") // MATCH /unchecked error/
+	fmt.Println("this method returns an error")
+	fmt.Println("this method also returns an error")
 	return errors.New("")
 }
 
@@ -22,17 +22,17 @@ type u struct {
 }
 
 func a() error {
-	fmt.Println("this function returns an error") // MATCH /unchecked error/
+	fmt.Println("this function returns an error")
 	return errors.New("")
 }
 
 func b() (int, error) {
-	fmt.Println("this function returns an int and an error") // MATCH /unchecked error/
+	fmt.Println("this function returns an int and an error")
 	return 0, errors.New("")
 }
 
 func c() int {
-	fmt.Println("this function returns an int") // MATCH /unchecked error/
+	fmt.Println("this function returns an int")
 	return 7
 }
 
