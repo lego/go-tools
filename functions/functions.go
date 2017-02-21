@@ -1,6 +1,7 @@
 package functions
 
 import (
+	"go/types"
 	"sync"
 
 	"honnef.co/go/tools/callgraph"
@@ -32,9 +33,8 @@ var stdlibDescs = map[string]Description{
 
 	"(*net/http.Request).WithContext": Description{Pure: true},
 
-	// TODO(dh): remove this once we can detect nil errors
-	// automatically
-	"(*bytes.Buffer).Write": Description{NilError: true},
+	"math/rand.Read":         Description{NilError: true},
+	"(*math/rand.Rand).Read": Description{NilError: true},
 }
 
 type Description struct {
@@ -82,6 +82,7 @@ func (d *Descriptions) Get(fn *ssa.Function) Description {
 			fd.result.Pure = fd.result.Pure || d.IsPure(fn)
 			fd.result.Infinite = fd.result.Infinite || !terminates(fn)
 			fd.result.Ranges = vrp.BuildGraph(fn).Solve()
+			fd.result.NilError = fd.result.NilError || IsNilError(fn)
 		}
 
 		close(fd.ready)
@@ -90,4 +91,45 @@ func (d *Descriptions) Get(fn *ssa.Function) Description {
 		<-fd.ready
 	}
 	return fd.result
+}
+
+func IsNilError(fn *ssa.Function) bool {
+	// TODO(dh): This is very simplistic, as we only look for constant
+	// nil returns. A more advanced approach would work transitively.
+	// An even more advanced approach would be context-aware and
+	// determine nil errors based on inputs (e.g. io.WriteString to a
+	// bytes.Buffer will always return nil, but an io.WriteString to
+	// an os.File might not). Similarly, an os.File opened for reading
+	// won't error on Close, but other files will.
+	res := fn.Signature.Results()
+	if res.Len() == 0 {
+		return false
+	}
+	last := res.At(res.Len() - 1)
+	if types.TypeString(last.Type(), nil) != "error" {
+		return false
+	}
+
+	if fn.Blocks == nil {
+		return false
+	}
+	for _, block := range fn.Blocks {
+		if len(block.Instrs) == 0 {
+			continue
+		}
+		ins := block.Instrs[len(block.Instrs)-1]
+		ret, ok := ins.(*ssa.Return)
+		if !ok {
+			continue
+		}
+		v := ret.Results[len(ret.Results)-1]
+		c, ok := v.(*ssa.Const)
+		if !ok {
+			return false
+		}
+		if !c.IsNil() {
+			return false
+		}
+	}
+	return true
 }

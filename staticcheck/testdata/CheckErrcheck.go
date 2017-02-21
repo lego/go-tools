@@ -2,8 +2,10 @@ package pkg
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 )
 
 type t struct{}
@@ -11,7 +13,7 @@ type t struct{}
 func (x t) a() error {
 	fmt.Println("this method returns an error")      // MATCH /unchecked error/
 	fmt.Println("this method also returns an error") // MATCH /unchecked error/
-	return nil
+	return errors.New("")
 }
 
 type u struct {
@@ -20,12 +22,12 @@ type u struct {
 
 func a() error {
 	fmt.Println("this function returns an error") // MATCH /unchecked error/
-	return nil
+	return errors.New("")
 }
 
 func b() (int, error) {
 	fmt.Println("this function returns an int and an error") // MATCH /unchecked error/
-	return 0, nil
+	return 0, errors.New("")
 }
 
 func c() int {
@@ -39,6 +41,11 @@ func rec() {
 		_ = recover() // BLANK
 	}()
 	defer recover() // MATCH /unchecked error/
+}
+
+func nilError() error {
+	println("")
+	return nil
 }
 
 type MyError string
@@ -102,8 +109,9 @@ func main() {
 	b2 := &bytes.Buffer{}
 	b1.Write(nil)
 	b2.Write(nil)
-	// rand.Read(nil)
-	// mrand.Read(nil)
+	rand.Read(nil)
 
 	ioutil.ReadFile("main.go") // MATCH /unchecked error/
+
+	nilError()
 }
