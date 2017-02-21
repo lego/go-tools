@@ -45,7 +45,7 @@ func fn8(*[]int) {}
 func fn9() {
 	var s []int
 	s = append(s, 1)
-	fmt.Println(s)
+	_, _ = fmt.Println(s)
 	// MATCH:50 /this value of s is never used/
 	s = append(s, 1) // MATCH /this result of append is never used/
 }

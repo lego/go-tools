@@ -8,13 +8,13 @@ import (
 func fn() {
 	var s string
 	fn2 := func() string { return "" }
-	fmt.Printf(fn2())  // MATCH /should use print-style function/
-	fmt.Sprintf(fn2()) // MATCH /should use print-style function/
-	log.Printf(fn2())  // MATCH /should use print-style function/
-	fmt.Printf(s)      // MATCH /should use print-style function/
-	fmt.Printf(s, "")
+	_, _ = fmt.Printf(fn2()) // MATCH /should use print-style function/
+	fmt.Sprintf(fn2())       // MATCH /should use print-style function/
+	log.Printf(fn2())        // MATCH /should use print-style function/
+	_, _ = fmt.Printf(s)     // MATCH /should use print-style function/
+	_, _ = fmt.Printf(s, "")
 
-	fmt.Printf(fn2(), "")
-	fmt.Printf("")
-	fmt.Printf("", "")
+	_, _ = fmt.Printf(fn2(), "")
+	_, _ = fmt.Printf("")
+	_, _ = fmt.Printf("", "")
 }

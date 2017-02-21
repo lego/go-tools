@@ -33,3 +33,8 @@ func fn2() {
 	if err != nil {
 	}
 }
+
+// MATCH:19 /unchecked error/
+// MATCH:24 /unchecked error/
+// MATCH:29 /unchecked error/
+// MATCH:32 /unchecked error/

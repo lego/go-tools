@@ -251,6 +251,8 @@ func (c *Checker) Funcs() map[string]lint.Func {
 		"SA9000": c.callChecker(checkDubiousSyncPoolSizeRules),
 		"SA9001": c.CheckDubiousDeferInChannelRangeLoop,
 		"SA9002": c.CheckNonOctalFileMode,
+
+		"SA0000": c.CheckErrcheck,
 	}
 }
 
@@ -2770,6 +2772,48 @@ func (c *Checker) CheckWriterBufferModified(f *lint.File) {
 					}
 					f.Errorf(ins, "io.Writer.Write must not modify the provided buffer, not even temporarily")
 				}
+			}
+		}
+	}
+}
+
+func (c *Checker) CheckErrcheck(f *lint.File) {
+	for _, ssafn := range c.funcsForFile(f) {
+		for _, b := range ssafn.Blocks {
+			for _, ins := range b.Instrs {
+				ssacall, ok := ins.(ssa.CallInstruction)
+				if !ok {
+					continue
+				}
+				isRecover := false
+				if builtin, ok := ssacall.Common().Value.(*ssa.Builtin); ok {
+					isRecover = ok && builtin.Name() == "recover"
+				}
+
+				switch ins := ins.(type) {
+				case ssa.Value:
+					refs := ins.Referrers()
+					if refs == nil || len(filterDebug(*refs)) != 0 {
+						continue
+					}
+				case ssa.Instruction:
+					// will be a 'go' or 'defer', neither of which has usable return values
+				default:
+					// shouldn't happen
+					continue
+				}
+
+				res := ssacall.Common().Signature().Results()
+				if res.Len() == 0 {
+					continue
+				}
+				if !isRecover {
+					last := res.At(res.Len() - 1)
+					if types.TypeString(last.Type(), nil) != "error" {
+						continue
+					}
+				}
+				f.Errorf(ins, "unchecked error")
 			}
 		}
 	}

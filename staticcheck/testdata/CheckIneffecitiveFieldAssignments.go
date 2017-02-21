@@ -1,7 +1,5 @@
 package pkg
 
-import "fmt"
-
 type T struct {
 	X int
 }
@@ -12,7 +10,7 @@ func (t T) Fn1() {
 
 func (t T) Fn2() {
 	t.X = 1
-	fmt.Println(t)
+	println(t)
 }
 
 func (t T) Fn3() {

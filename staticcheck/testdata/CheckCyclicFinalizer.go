@@ -1,25 +1,22 @@
 package pkg
 
-import (
-	"fmt"
-	"runtime"
-)
+import "runtime"
 
 func fn() {
 	var x *int
-	foo := func(y *int) { fmt.Println(x) }
+	foo := func(y *int) { println(x) }
 	runtime.SetFinalizer(x, foo)
 	runtime.SetFinalizer(x, nil)
 	runtime.SetFinalizer(x, func(_ *int) {
-		fmt.Println(x)
+		println(x)
 	})
 
-	foo = func(y *int) { fmt.Println(y) }
+	foo = func(y *int) { println(y) }
 	runtime.SetFinalizer(x, foo)
 	runtime.SetFinalizer(x, func(y *int) {
-		fmt.Println(y)
+		println(y)
 	})
 }
 
-// MATCH:11 /the finalizer closes over the object, preventing the finalizer from ever running \(at .+:10:9/
-// MATCH:13 /the finalizer closes over the object, preventing the finalizer from ever running \(at .+:13:26/
+// MATCH:8 /the finalizer closes over the object, preventing the finalizer from ever running \(at .+:7:9/
+// MATCH:10 /the finalizer closes over the object, preventing the finalizer from ever running \(at .+:10:26/

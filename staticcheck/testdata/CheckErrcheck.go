@@ -1,11 +1,8 @@
 package pkg
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
-	mrand "math/rand"
 )
 
 type t struct{}
@@ -100,12 +97,12 @@ func main() {
 	go a()    // MATCH /unchecked error/
 	defer a() // MATCH /unchecked error/
 
-	b1 := bytes.Buffer{}
-	b2 := &bytes.Buffer{}
-	b1.Write(nil)
-	b2.Write(nil)
-	rand.Read(nil)
-	mrand.Read(nil)
+	// b1 := bytes.Buffer{}
+	// b2 := &bytes.Buffer{}
+	// b1.Write(nil)
+	// b2.Write(nil)
+	// rand.Read(nil)
+	// mrand.Read(nil)
 
 	ioutil.ReadFile("main.go") // MATCH /unchecked error/
 }
