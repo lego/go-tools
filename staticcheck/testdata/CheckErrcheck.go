@@ -114,4 +114,12 @@ func main() {
 	ioutil.ReadFile("main.go") // MATCH /unchecked error/
 
 	nilError()
+
+	err := customError() // MATCH /unchecked error/
+	err = customError()
+	if err != nil {
+		println()
+	}
 }
+
+// MATCH:118 /never used/
