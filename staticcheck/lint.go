@@ -2688,7 +2688,7 @@ func shortCallName(call *ssa.CallCommon) string {
 
 func callName(call *ssa.CallCommon) string {
 	if call.IsInvoke() {
-		return ""
+		return call.Method.FullName()
 	}
 	switch v := call.Value.(type) {
 	case *ssa.Function:
@@ -2847,13 +2847,21 @@ func (c *Checker) CheckErrcheck(f *lint.File) {
 						// Don't complain when the error is known to be nil
 						continue
 					}
-
-					switch callName(ssacall.Common()) {
-					case "(*os.File).Close":
-						recv := ssacall.Common().Args[0]
-						if isReadOnlyFile(recv, nil) {
-							continue
-						}
+				}
+				switch callName(ssacall.Common()) {
+				case "(*os.File).Close":
+					recv := ssacall.Common().Args[0]
+					if isReadOnlyFile(recv, nil) {
+						continue
+					}
+				case "(io.Writer).Write":
+					// TODO(dh): Ideally, we'd detect this
+					// automatically by knowing that any specific
+					// hash.Hash.Write implementation returns nil
+					// errors.
+					if types.TypeString((ssacall.Common().Value.Type()), nil) == "hash.Hash" {
+						// hash.Hash.Write never returns an error
+						continue
 					}
 				}
 

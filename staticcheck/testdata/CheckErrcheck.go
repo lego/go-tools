@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"bytes"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -149,6 +150,9 @@ func main() {
 		f6, _ = os.Create("b")
 	}
 	f6.Close() // MATCH /unchecked error/
+
+	h := md5.New()
+	h.Write(nil)
 }
 
-// MATCH:119 /never used/
+// MATCH:120 /never used/
