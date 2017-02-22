@@ -2777,21 +2777,35 @@ func (c *Checker) CheckWriterBufferModified(f *lint.File) {
 	}
 }
 
-func isReadOnlyFile(val ssa.Value) bool {
-	ex, ok := val.(*ssa.Extract)
-	if !ok {
-		return false
+func isReadOnlyFile(val ssa.Value, seen map[ssa.Value]bool) bool {
+	if seen == nil {
+		seen = map[ssa.Value]bool{}
 	}
-	call, ok := ex.Tuple.(*ssa.Call)
-	if !ok {
-		return false
-	}
-	switch callName(call.Common()) {
-	case "os.Open":
+	if seen[val] {
 		return true
-	case "os.OpenFile":
-		flags, ok := call.Common().Args[1].(*ssa.Const)
-		return ok && flags.Uint64() == 0
+	}
+	seen[val] = true
+	switch val := val.(type) {
+	case *ssa.Phi:
+		for _, edge := range val.Edges {
+			if !isReadOnlyFile(edge, seen) {
+				return false
+			}
+		}
+		return true
+	case *ssa.Extract:
+		call, ok := val.Tuple.(*ssa.Call)
+		if !ok {
+			return false
+		}
+		switch callName(call.Common()) {
+		case "os.Open":
+			return true
+		case "os.OpenFile":
+			flags, ok := call.Common().Args[1].(*ssa.Const)
+			return ok && flags.Uint64() == 0
+		}
+		return false
 	}
 	return false
 }
@@ -2837,7 +2851,7 @@ func (c *Checker) CheckErrcheck(f *lint.File) {
 					switch callName(ssacall.Common()) {
 					case "(*os.File).Close":
 						recv := ssacall.Common().Args[0]
-						if isReadOnlyFile(recv) {
+						if isReadOnlyFile(recv, nil) {
 							continue
 						}
 					}

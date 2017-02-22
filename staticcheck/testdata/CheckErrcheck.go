@@ -133,6 +133,22 @@ func main() {
 
 	f4, _ := os.OpenFile("", os.O_WRONLY, 0)
 	f4.Close() // MATCH /unchecked error/
+
+	var f5 *os.File
+	if true {
+		f5, _ = os.Open("a")
+	} else {
+		f5, _ = os.Open("b")
+	}
+	f5.Close()
+
+	var f6 *os.File
+	if true {
+		f6, _ = os.Open("a")
+	} else {
+		f6, _ = os.Create("b")
+	}
+	f6.Close() // MATCH /unchecked error/
 }
 
 // MATCH:119 /never used/
