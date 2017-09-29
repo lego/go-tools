@@ -2,6 +2,7 @@
 package staticcheck // import "honnef.co/go/tools/staticcheck"
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/constant"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	texttemplate "text/template"
 
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"honnef.co/go/tools/functions"
 	"honnef.co/go/tools/internal/sharedcheck"
 	"honnef.co/go/tools/lint"
@@ -272,6 +274,7 @@ func (c *Checker) Funcs() map[string]lint.Func {
 		"SA5005": c.CheckCyclicFinalizer,
 		// "SA5006": c.CheckSliceOutOfBounds,
 		"SA5007": c.CheckInfiniteRecursion,
+		"SA5010": c.CheckSwitchEnumeration,
 
 		"SA6000": c.callChecker(checkRegexpMatchLoopRules),
 		"SA6001": c.CheckMapBytesKey,
@@ -2230,6 +2233,163 @@ func (c *Checker) CheckLeakyTimeTick(j *lint.Job) {
 				}
 				j.Errorf(call, "using time.Tick leaks the underlying ticker, consider using it only in endless functions, tests and the main package, and use time.NewTicker here")
 			}
+		}
+	}
+}
+
+var staticCheckDeclarations = map[string]*regexp.Regexp{
+	"enum": regexp.MustCompile(`^// StaticCheck: ENUM = ([A-Za-z][A-Za-z0-9]*)$`),
+}
+
+func typeToTypeName(t types.Type) string {
+	typName := t.String()
+	splitName := strings.Split(typName, ".")
+	typName = splitName[len(splitName)-1]
+	return typName
+}
+
+func (c *Checker) CheckSwitchEnumeration(j *lint.Job) {
+	enumDeclRegex := staticCheckDeclarations["enum"]
+	enumDefs := map[string]*ast.Ident{}
+	enumDecls := map[string][]string{}
+	switchStmts := []*ast.SwitchStmt{}
+
+	// Find all static analysis declarations
+	fn := func(node ast.Node) bool {
+		switch v := node.(type) {
+		case *ast.Comment:
+			results := enumDeclRegex.FindStringSubmatch(v.Text)
+			if len(results) == 0 {
+				log.Infof(context.TODO(), "v.Text=%q results=%s", v.Text, results)
+				break
+			}
+
+			enumDefs[results[1]] = nil
+			break
+		case *ast.SwitchStmt:
+			switchStmts = append(switchStmts, v)
+			break
+		default:
+			break
+		}
+		return true
+	}
+	for _, f := range j.Program.Files {
+		ast.Inspect(f, fn)
+	}
+
+	log.Infof(context.TODO(), "enumDefs: %#v", enumDefs)
+
+	for _, p := range j.Program.Packages {
+		if p.Info.Pkg.Path() != "CheckSwitchEnumeration.go" {
+			continue
+		}
+		// Iterate over all definitions to find the static analysis
+		// enums and also all constants.
+		for ident, val := range p.Info.Defs {
+			if _, ok := enumDefs[ident.Name]; ok {
+				log.Infof(context.TODO(), "found enum ident for %s", ident)
+				enumDefs[ident.Name] = ident
+			} else if cnst, ok := val.(*types.Const); ok {
+				name := cnst.Name()
+				typName := typeToTypeName(cnst.Type())
+				log.Infof(context.TODO(), "const name=%q typ=%q", name, typName)
+				if _, ok := enumDecls[typName]; !ok {
+					enumDecls[typName] = []string(nil)
+				}
+				enumDecls[typName] = append(enumDecls[typName], name)
+
+			}
+		}
+
+		// Filter out all constants to only keep the static analysis
+		// enums.
+		for typName := range enumDecls {
+			if _, ok := enumDefs[typName]; !ok {
+				delete(enumDecls, typName)
+			}
+		}
+
+		for enumName, enumIdent := range enumDefs {
+			// Throw an error for all enum definitions with no
+			// declarations.
+			if enumIdent == nil {
+				log.Errorf(context.TODO(), "never found enum decl for %s", enumName)
+				continue
+			}
+		}
+
+		log.Infof(context.TODO(), "enumDefs: %v", enumDefs)
+		log.Infof(context.TODO(), "enumDecls: %v", enumDecls)
+
+		for _, swtch := range switchStmts {
+			// Ensure the switch is over a value
+			if swtch.Tag != nil {
+				log.Infof(context.TODO(), "swtch: %#v", swtch)
+
+				// Get the TypeValue of the switch value
+				if typeValue, ok := p.Info.Types[swtch.Tag]; ok {
+					swtchType := typeToTypeName(typeValue.Type)
+					log.Infof(context.TODO(), "swtch.Value inferred type: %s", swtchType)
+					// Check if the switch type needs to be statically checked
+					if possibleValues, ok := enumDecls[swtchType]; ok {
+						EnumsSet := map[string]bool{}
+						for _, v := range possibleValues {
+							EnumsSet[v] = false
+						}
+
+						log.Infof(context.TODO(), "swtch.Value possible values: %s", possibleValues)
+						// Iterate over each case in the switch statement
+						for _, clause := range swtch.Body.List {
+							if v, ok := clause.(*ast.CaseClause); ok {
+								// Default case
+								if v.List == nil {
+									log.Infof(context.TODO(), "swtch CaseClause -- default")
+								} else {
+									log.Infof(context.TODO(), "swtch CaseClause -- case")
+									// Iterate over each value in the single case clause
+									for _, expr := range v.List {
+										// Get the TypeValue of the the case value.
+										// If it's not a constant, raise lint error.
+										// We only statically check constants. THESE ARE ENUMS FOLKS!
+										if caseTypeValue, ok := p.Info.Types[expr]; ok {
+											caseType := typeToTypeName(caseTypeValue.Type)
+											log.Infof(context.TODO(), "         case      type=%s", caseType)
+											log.Infof(context.TODO(), "              TypeValue=%#v", caseTypeValue)
+											log.Infof(context.TODO(), "                   expr=%#v", expr)
+											if v, ok := expr.(*ast.Ident); ok {
+												log.Infof(context.TODO(), "               expr.Obj=%#v", v.Obj)
+												if v.Obj.Kind == ast.Con {
+													log.Infof(context.TODO(), "                is Constant")
+													EnumsSet[v.Obj.Name] = true
+												} else {
+													log.Errorf(context.TODO(), "               not Constant")
+												}
+											} else {
+												log.Errorf(context.TODO(), "               not Identifier")
+											}
+										} else {
+											log.Errorf(context.TODO(), "expr not found in Types table: %s", expr)
+										}
+									}
+								}
+							} else {
+								log.Errorf(context.TODO(), "expected case clause, got: %s", clause)
+							}
+						}
+
+						for name, isHandled := range EnumsSet {
+							if !isHandled {
+								log.Errorf(context.TODO(), "found unhandled Enum in select: %s", name)
+								j.Errorf(swtch, "missing case %s", name)
+							}
+						}
+					}
+				} else {
+					log.Errorf(context.TODO(), "swtch.Tag not found in Types table: %s", swtch.Tag)
+				}
+			}
+
 		}
 	}
 }
