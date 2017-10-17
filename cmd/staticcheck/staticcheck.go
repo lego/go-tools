@@ -15,5 +15,6 @@ func main() {
 	fs.Parse(os.Args[1:])
 	c := staticcheck.NewChecker()
 	c.CheckGenerated = *gen
+	c.WholeProgram = true
 	lintutil.ProcessFlagSet(c, fs)
 }

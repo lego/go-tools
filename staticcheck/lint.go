@@ -274,7 +274,7 @@ func (c *Checker) Funcs() map[string]lint.Func {
 		"SA5005": c.CheckCyclicFinalizer,
 		// "SA5006": c.CheckSliceOutOfBounds,
 		"SA5007": c.CheckInfiniteRecursion,
-		"SA5010": c.CheckSwitchEnumeration,
+		"SA5010": c.CheckDatums,
 
 		"SA6000": c.callChecker(checkRegexpMatchLoopRules),
 		"SA6001": c.CheckMapBytesKey,
@@ -2238,8 +2238,10 @@ func (c *Checker) CheckLeakyTimeTick(j *lint.Job) {
 }
 
 var staticCheckDeclarations = map[string]*regexp.Regexp{
-	"enum": regexp.MustCompile(`^// StaticCheck: ENUM = ([A-Za-z][A-Za-z0-9]*)$`),
+	"enum": regexp.MustCompile(`^// StaticCheck: ENUM = ([A-Za-z][A-Za-z0-9_]*)$`),
 }
+
+var datumFileName = regexp.MustCompile(`datum\.go$`)
 
 func typeToTypeName(t types.Type) string {
 	typName := t.String()
@@ -2248,24 +2250,222 @@ func typeToTypeName(t types.Type) string {
 	return typName
 }
 
+type DatumType struct {
+	Name string
+	Obj  types.Object
+	Typ  types.Type
+}
+
+func (d DatumType) String() string {
+	return d.Name
+}
+
+type DatumTypes []DatumType
+
+func (d DatumTypes) String() string {
+	s := "["
+	for i, datum := range d {
+		if i != 0 {
+			s += ", "
+		}
+		s += datum.String()
+	}
+	s += "]"
+	return s
+}
+
+func findAllCases(j *lint.Job, s *ast.TypeSwitchStmt) (typs []types.Type) {
+	for _, stmt := range s.Body.List {
+		c := stmt.(*ast.CaseClause)
+		for _, t := range c.List {
+			typ := j.Program.Info.TypeOf(t).Underlying()
+			typs = append(typs, typ)
+		}
+	}
+	return
+}
+
+func (c *Checker) CheckDatums(j *lint.Job) {
+	for _, f := range j.Program.Files {
+		fileName := j.Program.Prog.Fset.Position(f.Pos()).Filename
+		// if len(datumFileName.FindStringSubmatch(fileName)) > 0 {
+		log.Warningf(context.TODO(), "Name=%q", fileName)
+		// ast.Inspect(f, fn)
+		// }
+	}
+	return
+	var parserPackage *lint.Pkg
+	// Find the sql/parser package
+	for _, p := range j.Program.Packages {
+		if p.Pkg.Name() == "parser" {
+			parserPackage = p
+			break
+		}
+	}
+	if parserPackage == nil {
+		log.Fatalf(context.TODO(), `Could not find package "parser"`)
+	}
+
+	scope := parserPackage.Pkg.Scope()
+	// Get the Datum IFace
+	datumIFace := scope.Lookup("Datum").Type().Underlying().(*types.Interface)
+
+	// Get all of the Datums that implement the Datum IFace
+	var datums DatumTypes
+	for _, name := range scope.Names() {
+		obj := scope.Lookup(name)
+		if _, ok := obj.Type().Underlying().(*types.Struct); ok {
+			ptr := types.NewPointer(obj.Type())
+			if imp := types.Implements(ptr.Underlying(), datumIFace); imp {
+				datums = append(datums, DatumType{Name: obj.Name(), Obj: obj, Typ: ptr.Underlying()})
+			}
+		}
+	}
+
+	if len(datums) < 5 {
+		log.Fatalf(context.TODO(), "Did not find datums")
+	}
+	log.Warningf(context.TODO(), "Datums: %v", datums)
+
+	// Search for any switch statements with a Datum
+	fn := func(node ast.Node) bool {
+		if v, ok := node.(*ast.TypeSwitchStmt); ok {
+			switch t := v.Assign.(type) {
+			case *ast.AssignStmt:
+				if len(t.Lhs) != 1 {
+					panic("Unhandled, more than 1 assignment")
+				}
+				expr := t.Rhs[0].(*ast.TypeAssertExpr)
+				if j.Program.Info.TypeOf(expr.X).Underlying() == datumIFace {
+					log.Errorf(context.TODO(), "Found one!")
+					cases := findAllCases(j, v)
+					log.Errorf(context.TODO(), "Cases: %s", cases)
+				}
+			}
+		}
+		return true
+	}
+	for _, f := range j.Program.Files {
+		// fileName := j.Program.Prog.Fset.Position(f.Pos()).Filename
+		// if len(datumFileName.FindStringSubmatch(fileName)) > 0 {
+		// log.Warningf(context.TODO(), "Name=%q", fileName)
+		ast.Inspect(f, fn)
+		// }
+	}
+
+	return
+
+	// var datumFile *ast.File
+	// // Find datum.go
+	// for _, f := range j.Program.Files {
+	// 	fileName := j.Program.Prog.Fset.Position(f.Pos()).Filename
+	// 	results := datumFileName.FindStringSubmatch(fileName)
+	// 	if len(results) > 0 {
+	// 		datumFile = f
+	// 		break
+	// 	}
+	// }
+
+	// if datumFile == nil {
+	// 	log.Errorf(context.TODO(), "Could not find datum.go")
+	// }
+
+	// getDatumInterfaceType := func(file *ast.File) *ast.InterfaceType {
+	// 	for _, d := range file.Decls {
+	// 		switch v := d.(type) {
+	// 		case *ast.GenDecl:
+	// 			switch v.Tok {
+	// 			case token.TYPE:
+	// 				log.Infof(context.TODO(), "GenDecl: %#v", v)
+	// 				for _, spec := range v.Specs {
+	// 					s := spec.(*ast.TypeSpec)
+	// 					log.Infof(context.TODO(), "Spec: name=%s", s.Name.Name)
+	// 					if s.Name.Name == "Datum" {
+	// 						return s.Type.(*ast.InterfaceType)
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// 	panic("Could not find Datum type")
+	// }
+
+	// datumInterfaceType := getDatumInterfaceType(datumFile)
+
+	// getDatumTypes := func(file *ast.File) (datums []*ast.StructType) {
+	// 	for _, d := range file.Decls {
+	// 		if genDecl, ok := d.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
+	// 			log.Infof(context.TODO(), "GenDecl: %#v", genDecl)
+	// 			for _, spec := range genDecl.Specs {
+	// 				s := spec.(*ast.TypeSpec)
+	// 				if v, ok := s.Type.(*ast.StructType); ok {
+	// 					log.Infof(context.TODO(), "Spec: name=%s", s.Name.Name)
+	// 					datums = append(datums, v)
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// 	return
+	// }
+
+	// datumStructTypes := getDatumTypes(datumFile)
+	// datumIFace := j.Program.Info.TypeOf(datumInterfaceType).Underlying().(*types.Interface)
+	// var datums []types.Type
+	// for _, d := range datumStructTypes {
+	// 	s := j.Program.Info.TypeOf(d).(*types.Struct)
+	// 	log.Infof(context.TODO(), "Datum: %#v", d)
+	// 	log.Infof(context.TODO(), "Datum type: %s", s)
+	// 	datumPtr := types.NewPointer(s).Underlying()
+	// 	if types.Implements(datumPtr, datumIFace) {
+	// 		datums = append(datums, datumPtr)
+	// 	}
+	// }
+	// log.Infof(context.TODO(), "DatumIFace: %s", datumIFace)
+	// log.Infof(context.TODO(), "Datums: %s", datums)
+	// log.Infof(context.TODO(), "Datums size=%d", len(datums))
+
+	// return
+
+	// for _, f := range j.Program.Files {
+	// 	log.Infof(context.TODO(), "file=%v", j.Program.Prog.Fset.Position(f.Pos()).Filename)
+	// 	for _, g := range f.Comments {
+	// 		for _, v := range g.List {
+	// 			results := enumDeclRegex.FindStringSubmatch(v.Text)
+	// 			if len(results) > 0 {
+	// 				log.Infof(context.TODO(), "Found EnumType: %s", results[1])
+	// 				enumDefs[results[1]] = nil
+	// 				break
+	// 			}
+	// 		}
+	// 	}
+	// }
+}
+
 func (c *Checker) CheckSwitchEnumeration(j *lint.Job) {
 	enumDeclRegex := staticCheckDeclarations["enum"]
 	enumDefs := map[string]*ast.Ident{}
 	enumDecls := map[string][]string{}
 	switchStmts := []*ast.SwitchStmt{}
 
+	for _, f := range j.Program.Files {
+		log.Infof(context.TODO(), "file=%v", j.Program.Prog.Fset.Position(f.Pos()).Filename)
+		for _, g := range f.Comments {
+			for _, v := range g.List {
+				results := enumDeclRegex.FindStringSubmatch(v.Text)
+				if len(results) > 0 {
+					log.Infof(context.TODO(), "Found EnumType: %s", results[1])
+					enumDefs[results[1]] = nil
+					break
+				}
+			}
+		}
+	}
+
+	return
+
 	// Find all static analysis declarations
 	fn := func(node ast.Node) bool {
 		switch v := node.(type) {
-		case *ast.Comment:
-			results := enumDeclRegex.FindStringSubmatch(v.Text)
-			if len(results) == 0 {
-				log.Infof(context.TODO(), "v.Text=%q results=%s", v.Text, results)
-				break
-			}
-
-			enumDefs[results[1]] = nil
-			break
 		case *ast.SwitchStmt:
 			switchStmts = append(switchStmts, v)
 			break
@@ -2328,8 +2528,8 @@ func (c *Checker) CheckSwitchEnumeration(j *lint.Job) {
 				log.Infof(context.TODO(), "swtch: %#v", swtch)
 
 				// Get the TypeValue of the switch value
-				if typeValue, ok := p.Info.Types[swtch.Tag]; ok {
-					swtchType := typeToTypeName(typeValue.Type)
+				if switchValueType := p.Info.TypeOf(swtch.Tag); switchValueType != nil {
+					swtchType := typeToTypeName(switchValueType)
 					log.Infof(context.TODO(), "swtch.Value inferred type: %s", swtchType)
 					// Check if the switch type needs to be statically checked
 					if possibleValues, ok := enumDecls[swtchType]; ok {
@@ -2352,10 +2552,10 @@ func (c *Checker) CheckSwitchEnumeration(j *lint.Job) {
 										// Get the TypeValue of the the case value.
 										// If it's not a constant, raise lint error.
 										// We only statically check constants. THESE ARE ENUMS FOLKS!
-										if caseTypeValue, ok := p.Info.Types[expr]; ok {
-											caseType := typeToTypeName(caseTypeValue.Type)
-											log.Infof(context.TODO(), "         case      type=%s", caseType)
-											log.Infof(context.TODO(), "              TypeValue=%#v", caseTypeValue)
+										if caseType := p.Info.TypeOf(expr); caseType != nil {
+											caseTypeName := typeToTypeName(caseType)
+											log.Infof(context.TODO(), "         case      type=%s", caseTypeName)
+											log.Infof(context.TODO(), "              TypeValue=%#v", caseType)
 											log.Infof(context.TODO(), "                   expr=%#v", expr)
 											if v, ok := expr.(*ast.Ident); ok {
 												log.Infof(context.TODO(), "               expr.Obj=%#v", v.Obj)
@@ -2386,7 +2586,7 @@ func (c *Checker) CheckSwitchEnumeration(j *lint.Job) {
 						}
 					}
 				} else {
-					log.Errorf(context.TODO(), "swtch.Tag not found in Types table: %s", swtch.Tag)
+					log.Errorf(context.TODO(), "swtch.Tag Type not found: %s", swtch.Tag)
 				}
 			}
 

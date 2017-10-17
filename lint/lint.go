@@ -227,11 +227,13 @@ func (l *Linter) Lint(lprog *loader.Program) []Problem {
 	l.Checker.Init(prog)
 
 	funcs := l.Checker.Funcs()
-	var keys []string
-	for k := range funcs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	// var keys []string
+	// for k := range funcs {
+	// 	keys = append(keys, k)
+	// }
+	// sort.Strings(keys)
+	// FIXME(joey): Shim to only run our new check
+	keys := []string{"SA5010"}
 
 	var jobs []*Job
 	for _, k := range keys {

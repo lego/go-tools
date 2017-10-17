@@ -37,5 +37,5 @@ func fn() {
 		break
 	}
 
-	// FIXME: Add case for Interface implementors (much more complicated :( )
+	// TODO: Add case for Interface type switch... it's much more complicated :(
 }
